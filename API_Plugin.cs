@@ -1,6 +1,7 @@
 ﻿using BepInEx;
 using HarmonyLib;
 using MTM101BaldAPI;
+using System.Collections.Generic;
 
 namespace MyAPI.Core
 {
@@ -12,6 +13,8 @@ namespace MyAPI.Core
         public OnFloorReset onNextLevel;
         public delegate void OnFloorReset();
         public OnFloorReset onFloorUpdate;
+
+        public List<string> plugins = new List<string>();
 
         public override ModInfo GetPluginInfo() => new ModInfo("il.modded.api", "IvanLom_API", "1.0");
 
