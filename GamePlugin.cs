@@ -1,5 +1,6 @@
 ﻿using BepInEx;
 using BepInEx.Bootstrap;
+using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using MTM101BaldAPI;
@@ -8,6 +9,7 @@ using MTM101BaldAPI.ObjectCreation;
 using MTM101BaldAPI.OptionsAPI;
 using MTM101BaldAPI.Registers;
 using MTM101BaldAPI.SaveSystem;
+using MyAPI.Core;
 using MyAPI.Data;
 using MyAPI.NPCs;
 using PlusStudioLevelLoader;
@@ -28,6 +30,7 @@ namespace MyAPI
     {
         #region Audio
         public LoopManager LoopMan { get; protected set; }
+        protected ConfigEntry<bool> activePlugin;
         protected GamePluginEditor editor;
 
         protected AudioManager audMan;
@@ -72,6 +75,23 @@ namespace MyAPI
 
         protected virtual void Awake()
         {
+            activePlugin = Config.Bind(
+    "Active",
+    "Is Active",
+    true,
+    "Activates the mod."
+);
+            API_Plugin api = FindObjectOfType<API_Plugin>();
+            if (api != null && activePlugin.Value)
+            {
+                api.plugins.Add(GetPluginInfo().guid);
+            }
+            if (api != null && !api.plugins.Contains(GetPluginInfo().guid))
+            {
+                enabled = false;
+                return;
+            }
+
             assetMan = new AssetManager();
             storage = new PluginStorage();
             if (Chainloader.PluginInfos.ContainsKey("mtm101.rulerp.baldiplus.levelstudio"))
@@ -97,6 +117,8 @@ namespace MyAPI
 
         protected void LoadOptions<T>(string localizationKey) where T : ModOptions
         {
+            if (!activePlugin.Value) return;
+
             CustomOptionsCore.OnMenuInitialize += delegate (OptionsMenu menu, CustomOptionsHandler handler)
             {
                 handler.AddCategory<T>(localizationKey);
