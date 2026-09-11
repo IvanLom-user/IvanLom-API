@@ -42,11 +42,8 @@ namespace MyAPI
             charAudSource.spatialBlend = 1;
             character.audMan.audioDevice = charAudSource;
             character.wahahAudMan = character.gameObject.AddComponent<PropagatedAudioManager>();
-            if (music != null)
-            {
-                character.wahahAudMan.ReflectionSetVariable("soundOnStart", new SoundObject[] { music });
-                character.wahahAudMan.ReflectionSetVariable("loopOnStart", true);
-            }
+            character.wahahAudMan.ReflectionSetVariable("soundOnStart", new SoundObject[] { music });
+            character.wahahAudMan.ReflectionSetVariable("loopOnStart", true);
 
             if (additionalMusic != null)
             {
@@ -139,7 +136,7 @@ namespace MyAPI
 
                     newArray[currentLength] = new WeightedItemObject() { selection = itm, weight = chance };
 
-                    sceneObject.totalShopItems = Math.Min(sceneObject.totalShopItems + 2, 10);
+                    sceneObject.totalShopItems = Math.Min(sceneObject.totalShopItems + 2, 12);
                     sceneObject.shopItems = newArray;
                     sceneObject.MarkAsNeverUnload();
                     break;
@@ -147,8 +144,10 @@ namespace MyAPI
             }
         }
 
+        
+
         /// <summary>
-        /// Adds an item to the loader. (spawns item in a specific floor, level, with specific chance)
+        /// Adds an item to the loader. (spawns an item in specific levels, with specific chance)
         /// </summary>
         /// <param name="itm">The item prefab.</param>
         /// <param name="plugin">The plugin that spawned the item.</param>
@@ -156,7 +155,7 @@ namespace MyAPI
         /// <param name="floorNumber">The floor it can spawn</param>
         /// <param name="sceneObject">The scene it can spawn</param>
         /// <param name="chance">The weight it can spawn.</param>
-        /// <param name="potentialFloorNames">The levels it can spawn.</param>
+        /// <param name="locations">The levels it can spawn.</param>
         public static void GenerateItem(this ItemObject itm, GamePlugin plugin, string floorName, int floorNumber, SceneObject sceneObject, int chance, params PotentialLocations[] locations)
         {
             if (itm == null)
@@ -175,6 +174,39 @@ namespace MyAPI
                         if (levelObjects[i].IsModifiedByMod(plugin.Info)) continue;
                         levelObjects[i].potentialItems = levelObjects[i].potentialItems.AddItem(new WeightedItemObject() { selection = itm, weight = chance }).ToArray();
                         levelObjects[i].MarkAsModifiedByMod(plugin.Info);
+                    }
+                    break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Adds a poster to the loader. (spawns a poster in specific levels, with specific chance)
+        /// </summary>
+        /// <param name="poster">The poster object.</param>
+        /// <param name="plugin">The plugin that spawned the poster.</param>
+        /// <param name="floorName">The floor's name it can spawn.</param>
+        /// <param name="floorNumber">The floor it can spawn</param>
+        /// <param name="sceneObject">The scene it can spawn</param>
+        /// <param name="chance">The weight it can spawn.</param>
+        public static void GeneratePoster(this PosterObject poster, GamePlugin plugin, string floorName, int floorNumber, SceneObject sceneObject, int chance)
+        {
+            if (poster == null)
+            {
+                Debug.LogError("NullReferenceException: The custom poster is null!");
+                return;
+            }
+
+            CustomLevelObject[] levelObjects = sceneObject.GetCustomLevelObjects();
+            foreach (string availableFloorNames in GetPotentialLevels([PotentialLocations.Floors, PotentialLocations.Endless, PotentialLocations.Pitstop]))
+            {
+                if ((floorName.StartsWith(availableFloorNames) || sceneObject.GetMeta().tags.Contains(availableFloorNames)))
+                {
+                    for (int i = 0; i < levelObjects.Length; i++)
+                    {
+                        levelObjects[i].posterChance -= 0.01f;
+                        levelObjects[i].posterChance = Mathf.Max(levelObjects[i].posterChance, 0.01f);
+                        levelObjects[i].posters = levelObjects[i].posters.AddItem(new WeightedPosterObject() { selection = poster, weight = chance }).ToArray();
                     }
                     break;
                 }

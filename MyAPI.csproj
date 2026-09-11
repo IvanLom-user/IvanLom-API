@@ -39,6 +39,9 @@
     <Reference Include="NavMeshComponents">
       <HintPath>D:\SteamLibrary\steamapps\common\Baldi's Basics Plus\BALDI_Data\Managed\NavMeshComponents.dll</HintPath>
     </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>D:\SteamLibrary\steamapps\common\Baldi's Basics Plus\BepInEx\plugins\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="PlusLevelStudio">
       <HintPath>D:\SteamLibrary\steamapps\common\Baldi's Basics Plus\BepInEx\plugins\PlusLevelStudio.dll</HintPath>
     </Reference>

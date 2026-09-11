@@ -1,6 +1,4 @@
-﻿using BepInEx.Logging;
-using MyAPI.Core;
-using PlusLevelStudio;
+﻿using PlusLevelStudio;
 using PlusLevelStudio.Editor;
 using PlusLevelStudio.Editor.Tools;
 using PlusStudioLevelFormat;

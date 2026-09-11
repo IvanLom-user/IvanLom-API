@@ -1,7 +1,11 @@
 ﻿using MTM101BaldAPI;
 using MTM101BaldAPI.AssetTools;
+using MTM101BaldAPI.Registers;
+using MyAPI.Data;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 namespace MyAPI
@@ -11,6 +15,73 @@ namespace MyAPI
     /// </summary>
     public static class BaseAPI
     {
+        #region Data Saving
+        public static Dictionary<string, object> data = new Dictionary<string, object>();
+
+        public static void Add<T>(string id, T item) where T : class
+        {
+            if (data.ContainsKey(id))
+            {
+                throw new Exception($"Already contains key: {id}");
+            }
+
+            data.Add(id, item);
+        }
+
+        public static void Remove(string id)
+        {
+            if (!data.ContainsKey(id))
+            {
+                throw new KeyNotFoundException($"PluginStorage: Could not find {id} to remove!");
+            }
+
+            data.Remove(id);
+        }
+
+        public static T Get<T>(string id) where T : class
+        {
+            if (!data.TryGetValue(id, out var value))
+            {
+                throw new KeyNotFoundException($"PluginStorage: Could not find {id} to return it!");
+            }
+
+            return value as T;
+        }
+
+        public static bool TryGet<T>(string id, out T value) where T : class
+        {
+            if (data.TryGetValue(id, out var val) && val is T typedVal)
+            {
+                value = typedVal;
+                return true;
+            }
+
+            value = null;
+            return false;
+        }
+        #endregion
+
+        public static void GetJson<T>(this GamePlugin plugin, string jsonName, out DataConfig<T> config) where T : class
+        {
+            string jsonPath = Path.Combine(AssetLoader.GetModPath(plugin), "Data", $"{jsonName}.json");
+
+            if (!File.Exists(jsonPath))
+            {
+                plugin.Log($"{plugin.GetPluginInfo().guid}: No Posters_{jsonName}.json found at {jsonPath}!", BepInEx.Logging.LogLevel.Fatal);
+                config = null;
+                return;
+            }
+
+            string jsonContent = File.ReadAllText(jsonPath);
+            config = JsonConvert.DeserializeObject<DataConfig<T>>(jsonContent);
+
+            if (config == null)
+            {
+                plugin.Log($"{plugin.GetPluginInfo().guid}: Failed to parse Posters_{jsonName}.json!", BepInEx.Logging.LogLevel.Fatal);
+                return;
+            }
+        }
+
         public static SoundObject GetSound(this string soundName, GamePlugin plugin, string subtitle, Color? color = null, string secondFolder = "", string format = ".ogg", SoundType sfxType = SoundType.Effect, string folder = "Sounds")
         {
             SoundObject sound;

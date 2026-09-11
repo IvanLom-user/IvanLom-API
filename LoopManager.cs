@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace MyAPI
@@ -7,6 +8,7 @@ namespace MyAPI
     {
         public GamePlugin plugin;
         public bool stop;
+        private bool transitioning;
 
         public void Update()
         {
@@ -18,17 +20,33 @@ namespace MyAPI
             if (plugin.LoopAudio == null) return;
             if (stop) return;
 
-            plugin.LoopAudio.volume = Singleton<PlayerFileManager>.Instance.volume[2];
-            if (plugin.currentAudioToLoop != null && !plugin.LoopAudio.isPlaying)
+            if (!transitioning)
             {
-                plugin.LoopAudio.clip = plugin.currentAudioToLoop.soundClip;
-                plugin.LoopAudio.Play();
+                plugin.LoopAudio.volume = Singleton<PlayerFileManager>.Instance.volume[2] * 2f;
+                if (plugin.currentAudioToLoop != null && !plugin.LoopAudio.isPlaying)
+                {
+                    plugin.LoopAudio.clip = plugin.currentAudioToLoop.soundClip;
+                    plugin.LoopAudio.Play();
+                }
+                else if (plugin.currentAudioToLoop == null && plugin.LoopAudio.isPlaying)
+                {
+                    transitioning = true;
+                    StartCoroutine(FadeOut());
+                }
             }
-            else if (plugin.currentAudioToLoop == null && plugin.LoopAudio.isPlaying)
+        }
+
+        private IEnumerator FadeOut()
+        {
+            transitioning = true;
+            while (plugin.LoopAudio.volume > 0f)
             {
-                plugin.LoopAudio.clip = null;
-                plugin.LoopAudio.Stop();
+                plugin.LoopAudio.volume -= Time.deltaTime * 1.25f;
+                yield return null;
             }
+            plugin.LoopAudio.clip = null;
+            plugin.LoopAudio.Stop();
+            transitioning = false;
         }
     }
 }

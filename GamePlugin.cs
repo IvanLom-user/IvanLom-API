@@ -2,13 +2,13 @@
 using BepInEx.Bootstrap;
 using BepInEx.Configuration;
 using BepInEx.Logging;
-using HarmonyLib;
 using MTM101BaldAPI;
 using MTM101BaldAPI.AssetTools;
 using MTM101BaldAPI.ObjectCreation;
 using MTM101BaldAPI.OptionsAPI;
 using MTM101BaldAPI.Registers;
 using MTM101BaldAPI.SaveSystem;
+using MTM101BaldAPI.UI;
 using MyAPI.Core;
 using MyAPI.Data;
 using MyAPI.NPCs;
@@ -18,6 +18,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using TMPro;
 using UnityEngine;
 
 namespace MyAPI
@@ -33,7 +34,6 @@ namespace MyAPI
         protected ConfigEntry<bool> activePlugin;
         protected GamePluginEditor editor;
 
-        protected AudioManager audMan;
         protected AudioSource loopAudio;
 
         public AudioSource LoopAudio
@@ -42,21 +42,9 @@ namespace MyAPI
             {
                 if (loopAudio == null)
                 {
-                    HelperAPI.SetAudioMan(ref loopAudio, true, true);
+                    HelperAPI.SetAudioMan(ref loopAudio, true, 999f, true);
                 }
                 return loopAudio;
-            }
-        }
-
-        public AudioManager AudMan
-        {
-            get
-            {
-                if (audMan == null)
-                {
-                    HelperAPI.SetAudioMan(ref audMan, true, false);
-                }
-                return audMan;
             }
         }
 
@@ -65,7 +53,6 @@ namespace MyAPI
         public void ResetAudio()
         {
             currentAudioToLoop = null;
-            AudMan.audioDevice.Stop();
             LoopAudio.Stop();
         }
         #endregion
@@ -99,8 +86,6 @@ namespace MyAPI
                 editor = new GamePluginEditor();
                 editor.plugin = this;
             }
-            Harmony harmony = new Harmony(GetPluginInfo().guid);
-            harmony.PatchAllConditionals();
 
             LoadingEvents.RegisterOnAssetsLoaded(Info, LoadImportant, LoadingEventOrder.Pre);
             LoadingEvents.RegisterOnAssetsLoaded(Info, PreLoad(), LoadingEventOrder.Pre);
@@ -109,7 +94,7 @@ namespace MyAPI
             ModdedSaveGame.AddSaveHandler(Info);
 
             GameObject loopManobj = new GameObject();
-            loopManobj.name = $"PluginLoopManager_{GetPluginInfo().name}_{GetPluginInfo().version}";
+            loopManobj.name = $"PluginLoopManager_{GetPluginInfo().name}";
             DontDestroyOnLoad(loopManobj);
             LoopMan = loopManobj.AddComponent<LoopManager>();
             LoopMan.plugin = this;
@@ -131,7 +116,7 @@ namespace MyAPI
             HashSet<PluginAddition> additions = GetPluginInfo().additions;
             if (additions == null || additions.Count <= 0)
             {
-                Log($"Nothing was loaded for a plugin with (GUID: {GetPluginInfo().guid}; Name: {GetPluginInfo().name}; Version: {GetPluginInfo().version}; Additions: {GetPluginInfo().additions})!", LogLevel.Warning);
+                Log($"Nothing was loaded for a plugin with (GUID: {GetPluginInfo().guid}; Name: {GetPluginInfo().name}; Additions: {GetPluginInfo().additions})!", LogLevel.Warning);
                 yield break;
             }
 
@@ -201,15 +186,15 @@ namespace MyAPI
 
         protected void InternalEditorSupport() => editor.AddEditorStuff();
 
-        protected virtual void AddNPCs() { }
+        protected virtual void AddNPCs() { LoadNPCsFromJSON(); }
 
-        protected virtual void AddItems() { }
-
-        protected virtual void AddRooms(out string roomPath) { roomPath = Path.Combine(AssetLoader.GetModPath(this), "Rooms"); }
+        protected virtual void AddItems() { LoadItemsFromJSON(); }
 
         protected virtual void AddPosters() { }
 
-        protected virtual void AddObjects() { }
+        protected virtual void AddRooms(out string roomPath) { roomPath = Path.Combine(AssetLoader.GetModPath(this), "Rooms"); }
+
+        protected virtual void AddObjects() { LoadObjectsFromJSON(); }
 
         /// <summary>
         /// Executes only if Level Studio is installed.
@@ -276,6 +261,16 @@ namespace MyAPI
                             }
                         }
                     }
+                    if (storage.posters != null && storage.posters.Count > 0)
+                    {
+                        foreach (var poster in storage.posters.Values)
+                        {
+                            if (poster != null && poster.poster != null && poster.weight > 0 && !poster.categoryOnly)
+                            {
+                                poster.poster.GeneratePoster(this, name, num, scnObj, poster.weight);
+                            }
+                        }
+                    }
                 }
                 AddStuff(name, num, scnObj);
             });
@@ -324,26 +319,15 @@ namespace MyAPI
             }
         }
 
-        public virtual T LoadItem<T>(out ItemObject newItem, GameItemData data, int shopPrice, int genCost, string AssetManName, string spriteName, string localizedItemName, params string[] tags) where T : Item
+        public virtual ItemObject LoadItem<T>(GameItemData data, int shopPrice, int genCost, string AssetManName, string spriteName, string localizedItemName, params string[] tags) where T : Item
         {
             if (storage?.items?.ContainsKey(AssetManName) == true)
             {
-                Log($"Item '{AssetManName}' already exists in storage. Skipping duplicate.", LogLevel.Warning);
-                newItem = storage.items[AssetManName].item;
-                return newItem.item as T;
+                Log($"Item '{AssetManName}' already exists!", LogLevel.Warning);
+                return storage.items[AssetManName].item;
             }
 
-            string localizedItemDesc = localizedItemName.Replace("ITM_", "Desc_");
-
-            if (!localizedItemDesc.Contains("Desc"))
-            {
-                localizedItemDesc = "Desc_" + localizedItemName;
-            }
-
-            newItem = new ItemBuilder(Info)
-.SetEnum(localizedItemName).SetNameAndDescription(localizedItemName, localizedItemDesc).SetPickupSound(data.customPickupSound)
-.SetShopPrice(shopPrice).SetGeneratorCost(genCost).SetItemComponent<T>().SetSprites($"{spriteName}_small".GetSprite(this, secondFolder: "Items"), $"{spriteName}_big".GetSprite(this, secondFolder: "Items"))
-.SetMeta(data.flags, tags).Build();
+            var newItem = LoadItem_NoSave<T>(data, shopPrice, genCost, spriteName, localizedItemName, tags);
 
             data.item = newItem;
             assetMan.Add(AssetManName, newItem);
@@ -351,19 +335,115 @@ namespace MyAPI
             storage?.items?.Add(AssetManName, data);
             storage?.Add(AssetManName, data);
 
+            API_Plugin.Instance.items?.Add(AssetManName);
+
             if (Chainloader.PluginInfos.ContainsKey("mtm101.rulerp.baldiplus.levelstudioloader"))
             {
                 LevelLoaderPlugin.Instance.itemObjects.Add(AssetManName, newItem);
             }
-            return newItem.item as T;
+
+            return newItem;
         }
+
+        public virtual ItemObject LoadItem_NoSave<T>(GameItemData data, int shopPrice, int genCost, string spriteName, string localizedItemName, params string[] tags) where T : Item
+        {
+            string localizedItemDesc = localizedItemName.Replace("ITM_", "Desc_");
+
+            if (!localizedItemDesc.Contains("Desc"))
+            {
+                localizedItemDesc = "Desc_" + localizedItemName;
+            }
+
+            var newItem = new ItemBuilder(Info)
+.SetEnum(localizedItemName).SetNameAndDescription(localizedItemName, localizedItemDesc).SetPickupSound(data.customPickupSound)
+.SetShopPrice(shopPrice).SetGeneratorCost(genCost).SetItemComponent<T>().SetSprites($"{spriteName}_small".GetSprite(this, secondFolder: "Items"), $"{spriteName}_big".GetSprite(this, secondFolder: "Items"))
+.SetMeta(data.flags, tags).Build();
+            return newItem;
+        }
+
+        #region Item JSON Loading
+
+        /// <summary>
+        /// Loads items from JSON configuration in the plugin's folder.
+        /// Override this to provide custom item loading logic.
+        /// </summary>
+        protected virtual void LoadItemsFromJSON()
+        {
+            BaseAPI.GetJson<ItemEntry>(this, "Items", out var config);
+            if (config?.Data == null || config.Data.Count == 0)
+            {
+                Log($"{GetPluginInfo().guid}: No items found in Items.json!", LogLevel.Warning);
+                return;
+            }
+
+            foreach (var entry in config.Data)
+                LoadSingleItem(entry);
+        }
+
+        /// <summary>
+        /// Loads a single item from an ItemEntry configuration.
+        /// </summary>
+        protected virtual void LoadSingleItem(ItemEntry entry)
+        {
+            try
+            {
+                var data = CreateITMDataFromEntry(entry);
+
+                Type itemType = HelperAPI.GetTypeByName(entry.ItemType);
+                if (itemType == null)
+                {
+                    Log($"Item type '{entry.ItemType}' not found for item {entry.Id}!", LogLevel.Fatal);
+                    return;
+                }
+
+                var method = typeof(GamePlugin).GetMethod("LoadItem").MakeGenericMethod(itemType);
+                var parameters = new object[] { data, entry.ShopPrice, entry.GenCost, entry.AssetName, entry.SpriteName, entry.LocalizedName, entry.Tags?.ToArray() ?? [] };
+
+                method.Invoke(this, parameters);
+
+                Log($"Loaded item: {entry.AssetName} (Type: {itemType.Name})", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                Log($"Error loading item {entry.Id}: {ex.Message}", LogLevel.Error);
+            }
+        }
+
+        /// <summary>
+        /// Creates GameItemData from an ItemEntry.
+        /// </summary>
+        protected virtual GameItemData CreateITMDataFromEntry(ItemEntry entry)
+        {
+            var d = entry.Data;
+            var builder = new ItemDataBuilder().AddChance(d.Chance).AddShopChance(d.ShopChance).AddLocations(d.Locations?.Select(l => Enum.TryParse<PotentialLocations>(l, true, out var p) ? p : PotentialLocations.None).Where(p => p != PotentialLocations.None).ToArray() ?? Array.Empty<PotentialLocations>());
+
+            if (d.Flags?.Any() == true)
+            {
+                var flags = d.Flags.Aggregate(ItemFlags.None, (current, flag) =>
+                    Enum.TryParse<ItemFlags>(flag, true, out var f) ? current | f : current);
+                builder.AddFlags(flags);
+            }
+
+            if (!string.IsNullOrEmpty(d.CustomPickupSound))
+                builder.AddCustomPickupSound(d.CustomPickupSound.GetSound(this, "", Color.white, format: ".ogg", sfxType: SoundType.Effect, folder: "Sounds"));
+
+            return builder.Build();
+        }
+        #endregion
 
         public virtual void LoadPoster(out PosterObject newPoster, GamePosterData data, Texture2D posterTexture, string AssetManName)
         {
+            if (storage?.posters?.ContainsKey(AssetManName) == true)
+            {
+                Log($"Already contains poster key: {AssetManName}!", LogLevel.Fatal);
+                newPoster = null;
+                return;
+            }
+
             newPoster = ObjectCreators.CreatePosterObject(posterTexture, data.Convert());
             data.poster = newPoster;
-            assetMan.Add(AssetManName, newPoster);
-            assetMan.Add(AssetManName + "_DATA", data);
+            assetMan.Add($"{AssetManName}", newPoster);
+            assetMan.Add($"{AssetManName}_DATA", data);
             storage?.posters?.Add(AssetManName, data);
             storage?.Add(AssetManName, data);
 
@@ -373,6 +453,161 @@ namespace MyAPI
             }
         }
 
+        #region Poster JSON Loading
+
+        public enum PosterType : byte { Random, RoomExclusive }
+
+        /// <summary>
+        /// Loads posters from JSON configuration in the plugin's folder.
+        /// Override this to provide custom poster loading logic.
+        /// </summary>
+        protected virtual void LoadPostersFromJSON(PosterType type, RoomCategory exclusiveRooms, string modPrefix)
+        {
+            List<WeightedPosterObject> roomExclusivePosters = new List<WeightedPosterObject>();
+            string AssetName = $"{exclusiveRooms}_Poster0";
+
+            try
+            {
+                BaseAPI.GetJson<PosterEntry>(this, $"Posters_{exclusiveRooms}", out var config);
+
+                if (config == null) return;
+
+                if (type == PosterType.Random)
+                {
+                    if (config.Data != null)
+                    {
+                        foreach (var entry in config.Data)
+                        {
+                            LoadSinglePoster(entry, type, AssetName, modPrefix);
+                        }
+                    }
+                }
+                if (type == PosterType.RoomExclusive)
+                {
+                    if (config.Data != null)
+                    {
+                        foreach (var entry in config.Data)
+                        {
+                            LoadSinglePoster(entry, type, AssetName, modPrefix);
+
+                            if (storage.posters.TryGetValue($"{AssetName}{entry.Id}", out var posterData))
+                            {
+                                roomExclusivePosters.Add(new WeightedPosterObject()
+                                {
+                                    weight = entry.Weight,
+                                    selection = posterData.poster
+                                });
+                            }
+                        }
+                    }
+
+                    RoomAsset[] rooms = Array.FindAll(HelperAPI.LoadAssets<RoomAsset>(), x => x.category == exclusiveRooms);
+
+                    for (int i = 0; i < rooms.Length; i++)
+                    {
+                        rooms[i].posters.AddRange(roomExclusivePosters);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"{GetPluginInfo().guid}: Error loading objects from JSON: {ex.Message}", LogLevel.Fatal);
+            }
+        }
+
+        /// <summary>
+        /// Loads a single poster from a PosterEntry configuration.
+        /// </summary>
+        protected virtual void LoadSinglePoster(PosterEntry entry, PosterType type, string assetPrefix, string modPrefix)
+        {
+            try
+            {
+                Color textColor = HelperAPI.GetColorStr(entry.TextColor);
+                BaldiFonts font = HelperAPI.GetFontInt(entry.FontSize);
+                int fontSize = entry.FontSize;
+                IntVector2 pos = new IntVector2(entry.Position[0], entry.Position[1]);
+                string textKey = entry.TextKey ?? $"{assetPrefix}{entry.Id}";
+
+                var posterData = new PosterDataBuilder().MakeRoomOnly(type == PosterType.RoomExclusive).AddWeight(entry.Weight).AddText(textKey, textColor, pos, font, FontStyles.Normal, fontSize).Build();
+
+                string textureName = $"{assetPrefix}{entry.Id}";
+                string textureKey = $"{modPrefix}_{assetPrefix}_Tex_{entry.Id}";
+
+                storage.Add(textureKey, textureName.GetTexture(this, Path.Combine("Sprites", "Posters"), ".png"));
+
+                Texture2D texture = storage.Get<Texture2D>(textureKey);
+
+                if (texture == null)
+                {
+                    Log($"Texture not found for poster: {textureKey}", LogLevel.Warning);
+                    return;
+                }
+
+                LoadPoster(out _, posterData, texture, $"{modPrefix}_{assetPrefix}{entry.Id}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Error loading poster {entry.Id}: {ex.Message}", LogLevel.Error);
+            }
+        }
+        #endregion
+
+        #region Object JSON Loading
+        public virtual void LoadObjectsFromJSON()
+        {
+            try
+            {
+                BaseAPI.GetJson<ObjectEntry>(this, "Objects", out var config);
+
+                if (config == null) return;
+
+                foreach (ObjectEntry data in config.Data)
+                {
+                    Sprite sprite = data.SprName.GetSprite(this, "Sprites", ".png", "Objects");
+                    if (sprite == null)
+                    {
+                        Debug.LogWarning($"Sprite not found: {data.SprName} for object {data.Name}");
+                        continue;
+                    }
+
+                    Vector3 spriteSize = data.SpriteSize == null ? Vector3.one : new Vector3(
+                        data.SpriteSize.Length > 0 ? data.SpriteSize[0] : 1,
+                        data.SpriteSize.Length > 1 ? data.SpriteSize[1] : 1,
+                        data.SpriteSize.Length > 2 ? data.SpriteSize[2] : 1
+                    );
+
+                    LoadObjectWithType(data.Name, data.AssetManName, data.SpriteY, spriteSize, sprite, data.Type);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"{GetPluginInfo().guid}: Error loading objects from JSON: {ex.Message}", LogLevel.Fatal);
+            }
+        }
+
+        public virtual void LoadObjectWithType(string name, string AssetManName, float spriteY, Vector3 spriteSize, Sprite sprite, string typeName)
+        {
+            CreateObject(out var newObj, name, spriteY, spriteSize, sprite);
+
+            if (!string.IsNullOrEmpty(typeName))
+            {
+                Type componentType = HelperAPI.GetTypeByName(typeName);
+                if (componentType != null && componentType.IsSubclassOf(typeof(MonoBehaviour)))
+                {
+                    newObj.AddComponent(componentType);
+                }
+                else
+                {
+                    Log($"Component type '{typeName}' not found or is not a MonoBehaviour for object {name}!", LogLevel.Fatal);
+                }
+            }
+
+            newObj.ConvertToPrefab(true);
+            AddObjectToStorage(AssetManName, newObj);
+        }
+        #endregion
+
+        #region Object Loading
         public virtual void LoadObject<T>(string name, string AssetManName, float spriteY, Vector3 spriteSize, Sprite sprite) where T : MonoBehaviour
         {
             CreateObject(out var newObj, name, spriteY, spriteSize, sprite);
@@ -424,7 +659,9 @@ namespace MyAPI
             collider.center = Vector3.zero;
             collider.isTrigger = true;
         }
+        #endregion
 
+        #region NPC Loading
         /// <summary>
         /// Required for loading NPCs. 
         /// </summary>
@@ -484,6 +721,158 @@ namespace MyAPI
                 return null;
             }
         }
+        #region NPC JSON Loading
+
+        private static readonly Dictionary<string, System.Type> npcTypes = new Dictionary<string, System.Type>();
+        private static readonly Dictionary<string, AudioRolloffMode> _rolloffCache = new Dictionary<string, AudioRolloffMode>
+{
+    { "Linear", AudioRolloffMode.Linear },
+    { "Logarithmic", AudioRolloffMode.Logarithmic },
+    { "Custom", AudioRolloffMode.Custom }
+};
+
+        /// <summary>
+        /// Loads NPCs from JSON configuration in the plugin's folder.
+        /// </summary>
+        protected virtual void LoadNPCsFromJSON()
+        {
+            try
+            {
+                BaseAPI.GetJson<NPCDataEntry>(this, "NPCs", out var config);
+                if (config?.Data == null || config.Data.Count == 0)
+                {
+                    Log($"{GetPluginInfo().guid}: No NPCs found in NPCs.json!", LogLevel.Warning);
+                    return;
+                }
+
+                foreach (var entry in config.Data)
+                    LoadSingleNPC(entry);
+            }
+            catch (Exception ex)
+            {
+                Log($"{GetPluginInfo().guid}: Error loading NPCs from JSON: {ex.Message}", LogLevel.Error);
+            }
+        }
+
+        /// <summary>
+        /// Loads a single NPC from an NPCDataEntry configuration.
+        /// </summary>
+        protected virtual void LoadSingleNPC(NPCDataEntry entry)
+        {
+            try
+            {
+                Texture2D posterTexture = null;
+                if (!string.IsNullOrEmpty(entry.Data.PosterTexture))
+                {
+                    posterTexture = entry.Data.PosterTexture.GetTexture(this, folder: Path.Combine("Sprites", "NPCs"), format: ".png");
+                }
+
+                Sprite npcSprite = null;
+                if (!string.IsNullOrEmpty(entry.SpriteName))
+                {
+                    npcSprite = entry.SpriteName.GetSprite(this, secondFolder: "NPCs");
+                }
+
+                Sprite editorSprite = null;
+                if (!string.IsNullOrEmpty(entry.AssetName))
+                {
+                    string editorSpriteName = $"Editor_{entry.AssetName}";
+                    editorSprite = editorSpriteName.GetSprite(this, secondFolder: "NPCs");
+                    if (editorSprite == null)
+                        editorSprite = npcSprite;
+                }
+
+                var rolloff = AudioRolloffMode.Linear;
+                if (!string.IsNullOrEmpty(entry.Rolloff) && _rolloffCache.TryGetValue(entry.Rolloff, out var parsedRolloff))
+                    rolloff = parsedRolloff;
+
+                var roomCat = RoomCategory.Null;
+                if (!string.IsNullOrEmpty(entry.Data.RoomCategory))
+                {
+                    if (Enum.TryParse(entry.Data.RoomCategory, true, out RoomCategory roomCat2))
+                    {
+                        roomCat = roomCat2;
+                    }
+                    if (roomCat == RoomCategory.Null)
+                    {
+                        roomCat = EnumExtensions.ExtendEnum<RoomCategory>(entry.Data.RoomCategory);
+                    }
+                }
+
+                var potentialRooms = new List<WeightedRoomAsset>();
+                if (!string.IsNullOrEmpty(entry.Data.RoomAssetName))
+                {
+                    if (storage.rooms.ContainsKey(entry.Data.RoomAssetName))
+                    {
+                        var roomData = storage.rooms[entry.Data.RoomAssetName];
+                        if (roomData.Rooms != null && roomData.Rooms.Count > 0)
+                        {
+                            potentialRooms = roomData.Rooms;
+                        }
+                    }
+                    else
+                    {
+                        Log($"Room asset '{entry.Data.RoomAssetName}' not found in storage for NPC {entry.Id}!", LogLevel.Warning);
+                    }
+                }
+
+                var locations = entry.Data.Locations.Select(l => Enum.TryParse<PotentialLocations>(l, true, out var loc) ? loc : PotentialLocations.None).Where(l => l != PotentialLocations.None).ToArray();
+
+                SoundObject themeMusic = null;
+                if (!string.IsNullOrEmpty(entry.ThemeMusic))
+                {
+                    themeMusic = entry.ThemeMusic.GetSound(this, "", Color.white, format: ".ogg", sfxType: SoundType.Music, folder: "Music");
+                }
+
+                SoundObject additionalMusic = null;
+                if (!string.IsNullOrEmpty(entry.AdditionalMusic))
+                {
+                    additionalMusic = entry.AdditionalMusic.GetSound(this, "", Color.white, format: ".ogg", sfxType: SoundType.Music, folder: "Music");
+                }
+
+                Log($"Loading NPC: {entry.Id}", LogLevel.Info);
+                Log($"  - Sprite: {(npcSprite != null ? npcSprite.name : "NULL")}", LogLevel.Info);
+                Log($"  - Poster Texture: {(posterTexture != null ? posterTexture.name : "NULL")}", LogLevel.Info);
+                Log($"  - Theme Music: {(themeMusic != null ? themeMusic.name : "NULL")}", LogLevel.Info);
+                Log($"  - Room Category: {roomCat}", LogLevel.Info);
+                Log($"  - Potential Rooms: {potentialRooms.Count}", LogLevel.Info);
+
+                var npcBuilder = new NPCDataBuilder().AddName(entry.NameKey).AddMaxAudDistance(entry.MaxAudDist).AddSpeed(entry.Speed).AddWeight(entry.Data.Weight).AddRolloff(rolloff).AddPSTTexture(posterTexture).AddSprite(npcSprite).AddEditorSprite(editorSprite).AddMusic(themeMusic).AddAdditionalMusic(additionalMusic).AddRoomCategory(roomCat).AddLocations(locations);
+                if (potentialRooms != null && potentialRooms.Count > 0)
+                {
+                    npcBuilder.AddPotentialRooms(potentialRooms);
+                }
+                var npcData = npcBuilder.Build();
+
+                if (!npcTypes.TryGetValue(entry.NpcType, out var npcType))
+                {
+                    npcType = HelperAPI.GetTypeByName(entry.NpcType);
+                    if (npcType == null)
+                    {
+                        Log($"NPC type '{entry.NpcType}' not found for {entry.Id}!", LogLevel.Fatal);
+                        return;
+                    }
+                    npcTypes[entry.NpcType] = npcType;
+                }
+
+                var method = typeof(GamePlugin).GetMethod("LoadNPC").MakeGenericMethod(npcType);
+                method.Invoke(this, [
+            npcData,
+            entry.AssetName,
+            entry.PosterNameKey,
+            entry.PosterDescKey
+        ]);
+
+                Log($"Loaded NPC: {entry.AssetName} (Type: {npcType.Name})", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                Log($"Error loading NPC {entry.Id}: {ex.Message}", LogLevel.Error);
+            }
+        }
+
+        #endregion
+        #endregion
 
         /// <summary>
         /// Required for loading rooms. Please note that any error caused by incorrect data will cause crash.
@@ -543,6 +932,11 @@ namespace MyAPI
         public AssetManager assetMan;
 
         /// <summary>
+        /// Anything special that needs to be seen by other mods.
+        /// </summary>
+        public virtual bool special => false;
+
+        /// <summary>
         /// The storage contains the plugin's saved things.
         /// </summary>
         public PluginStorage storage;
@@ -554,14 +948,12 @@ namespace MyAPI
         {
             public string guid;
             public string name;
-            public string version;
             public HashSet<PluginAddition> additions;
 
-            public ModInfo(string guid, string name, string version, params PluginAddition[] additions)
+            public ModInfo(string guid, string name, params PluginAddition[] additions)
             {
                 this.guid = guid;
                 this.name = name;
-                this.version = version;
                 this.additions = additions != null ? [.. additions.ToList()] : [PluginAddition.None];
             }
         }

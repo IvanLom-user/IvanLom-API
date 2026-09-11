@@ -18,8 +18,17 @@ namespace MyAPI.Data
         /// </summary>
         public PosterText[] texts;
 
-        public GamePosterData(params PosterText[] texts)
+        /// <summary>
+        /// The weight of the poster.
+        /// </summary>
+        public int weight;
+
+        public bool categoryOnly;
+
+        public GamePosterData(int weight, bool categoryOnly, params PosterText[] texts)
         {
+            this.weight = weight;
+            this.categoryOnly = categoryOnly;
             this.texts = texts;
         }
 
@@ -46,6 +55,8 @@ namespace MyAPI.Data
     public class PosterDataBuilder
     {
         public List<PosterText> _text = new List<PosterText>();
+        public int _weight = 0;
+        public bool _catOnly = false;
 
         public PosterDataBuilder AddText(params PosterText[] texts)
         {
@@ -77,6 +88,18 @@ namespace MyAPI.Data
             return this;
         }
 
+        public PosterDataBuilder AddWeight(int weight)
+        {
+            _weight = weight;
+            return this;
+        }
+
+        public PosterDataBuilder MakeRoomOnly(bool toggle)
+        {
+            _catOnly = toggle;
+            return this;
+        }
+
         public GamePosterData Build()
         {
             for (int i = 0; i < _text.Count; i++)
@@ -88,7 +111,7 @@ namespace MyAPI.Data
                 }
             }
 
-            return new GamePosterData(_text.ToArray());
+            return new GamePosterData(_weight, _catOnly, _text.ToArray());
         }
     }
 

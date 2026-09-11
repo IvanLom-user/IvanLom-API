@@ -46,13 +46,12 @@ namespace MyAPI.Data
         {
             this.chance = chance;
             this.shopChance = shopChance;
-            this.locations = locations.ToList();
             this.flags = flags;
-
             if (customPickupSound != null)
             {
                 this.customPickupSound = customPickupSound;
             }
+            this.locations = locations.ToList();
         }
     }
 

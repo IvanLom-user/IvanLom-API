@@ -1,4 +1,5 @@
-﻿using MyAPI.Additions;
+﻿using MTM101BaldAPI;
+using MyAPI.Additions;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -16,6 +17,7 @@ namespace MyAPI.NPCs
         private CoreGameManager cgm;
         public bool overrideSpeed;
         public float timerTime;
+        public virtual float runSpeed => -1f;
 
         public delegate void OnInitialize();
         public delegate void WhenDestroyedNPC();
@@ -37,18 +39,25 @@ namespace MyAPI.NPCs
             }
         }
 
-        public CoreGameManager GetCGM()
+        public CoreGameManager CGM
         {
-            if (cgm == null)
+            get
             {
-                cgm = Singleton<CoreGameManager>.Instance;
+                if (cgm == null)
+                {
+                    cgm = Singleton<CoreGameManager>.Instance;
+                }
+                return cgm;
             }
-            return cgm;
         }
 
         public IEnumerator SingleTimerCoroutine(float time, Action action)
         {
-            yield return new WaitForSeconds(time);
+            WaitForSecondsNPCTimescale wait = new WaitForSecondsNPCTimescale(this, time);
+            while (wait.keepWaiting)
+            {
+                yield return null;
+            }
             action?.Invoke();
         }
 
@@ -56,7 +65,11 @@ namespace MyAPI.NPCs
         {
             while (true)
             {
-                yield return new WaitForSeconds(time);
+                WaitForSecondsNPCTimescale wait = new WaitForSecondsNPCTimescale(this, time);
+                while (wait.keepWaiting)
+                {
+                    yield return null;
+                }
                 action?.Invoke();
             }
         }
@@ -65,7 +78,11 @@ namespace MyAPI.NPCs
         {
             while (true)
             {
-                yield return new WaitForSeconds(UnityEngine.Random.Range(minRandom, maxRandom));
+                WaitForSecondsNPCTimescale wait = new WaitForSecondsNPCTimescale(this, UnityEngine.Random.Range(minRandom, maxRandom));
+                while (wait.keepWaiting)
+                {
+                    yield return null;
+                }
                 action?.Invoke();
             }
         }
@@ -84,7 +101,15 @@ namespace MyAPI.NPCs
         {
             base.Initialize();
 
-            behaviorStateMachine.ChangeState(new CustomNPC_Wander(this));
+            behaviorStateMachine.ChangeState(new CustomNPC_Wander(this, this));
+        }
+
+        public virtual void Alert(Vector3 pos)
+        {
+            navigationStateMachine.ChangeState(new NavigationState_TargetPosition(this, 0, pos));
+
+            if (runSpeed == -1f) return;
+            Navigator.SetSpeed(runSpeed);
         }
 
 #pragma warning disable CS0108
@@ -94,19 +119,9 @@ namespace MyAPI.NPCs
         protected virtual void OnDestroy() => StopAllCoroutines();
     }
 
-    public class CustomNPC_StateBase : NpcState
+    public class CustomNPC_Wander : NPC_StateBase<CustomNPC>
     {
-        protected NPC character;
-
-        public CustomNPC_StateBase(NPC chara) : base(chara)
-        {
-            character = chara;
-        }
-    }
-
-    public class CustomNPC_Wander : CustomNPC_StateBase
-    {
-        public CustomNPC_Wander(NPC chara) : base(chara)
+        public CustomNPC_Wander(NPC chara, CustomNPC custom) : base(chara, custom)
         {
         }
 
