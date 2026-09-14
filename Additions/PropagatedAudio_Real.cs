@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace MyAPI.Additions 
+namespace MyAPI.Additions
 {
     public class PropagatedAudio_Real : MonoBehaviour
     {

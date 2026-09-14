@@ -14,6 +14,7 @@ namespace MyAPI.NPCs
         public AudioManager wahahAudMan;
         public AudioManager additionalWahahAudMan;
         public PlayerManager pm;
+        public GamePlugin plugin;
         private CoreGameManager cgm;
         public bool overrideSpeed;
         public float timerTime;

@@ -1,12 +1,13 @@
 ﻿using MTM101BaldAPI;
 using MTM101BaldAPI.AssetTools;
-using MTM101BaldAPI.Registers;
 using MyAPI.Data;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using UnityEngine;
+using static UnityEngine.Rendering.VirtualTexturing.Debugging;
 
 namespace MyAPI
 {
@@ -245,5 +246,42 @@ namespace MyAPI
             Debug.Log($"Total sprites created: {sprites.Count}");
             return sprites;
         }
+
+        public static void LoadAssetBundle<T>(this GamePlugin plugin, string name, string prefPath, ref AssetBundle bundle, ref GameObject prefab, ref T component, out GameObject instance) where T : Component
+        {
+            if (bundle == null)
+            {
+                string bundlePath = Path.Combine(AssetLoader.GetModPath(plugin), "Data", GetOSName(), name);
+                bundle = AssetBundle.LoadFromFile(bundlePath);
+                if (bundle == null)
+                {
+                    plugin.Log("The bundle is null!", BepInEx.Logging.LogLevel.Fatal);
+                    instance = null;
+                    return;
+                }
+            }
+
+            if (prefab == null)
+            {
+                prefab = bundle.LoadAsset<GameObject>(prefPath);
+
+                if (prefab == null)
+                {
+                    bundle.Unload(false);
+                    plugin.Log("The prefab is null!", BepInEx.Logging.LogLevel.Fatal);
+                    instance = null;
+                    return;
+                }
+            }
+
+            instance = UnityEngine.Object.Instantiate(prefab);
+            component = instance.AddComponent<T>();
+            UnityEngine.Object.DontDestroyOnLoad(instance);
+        }
+
+        public static string GetOSName() => RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "Windows"
+    : RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "Linux"
+    : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "Mac"
+    : "Linux";
     }
 }

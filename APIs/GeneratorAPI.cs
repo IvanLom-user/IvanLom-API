@@ -34,6 +34,7 @@ namespace MyAPI
                 return;
             }
 
+            character.plugin = plugin;
             character.audMan = character.gameObject.AddComponent<AudioManager>();
             AudioSource charAudSource = character.audMan.gameObject.AddComponent<AudioSource>();
             charAudSource.minDistance = 1f;
