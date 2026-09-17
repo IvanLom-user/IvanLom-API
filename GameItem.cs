@@ -1,11 +1,12 @@
-﻿using MyAPI.NPCs;
+﻿using MyAPI.Core;
+using MyAPI.NPCs;
 using System;
 using System.Collections;
 using UnityEngine;
 
 namespace MyAPI._Items
 {
-    public class GameItem : Item
+    public abstract class GameItem : Item
     {
         #region Variables
         protected RaycastHit hit;

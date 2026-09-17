@@ -12,18 +12,21 @@ namespace MyAPI.Core
     public class API_Plugin : GamePlugin
     {
         public delegate void OnNextLevel();
-        public OnFloorReset onNextLevel;
+        public OnNextLevel onNextLevel;
         public delegate void OnFloorReset();
         public OnFloorReset onFloorUpdate;
 
-        public List<string> plugins = new List<string>();
         public List<string> items = new List<string>();
+
+        public IReadOnlyDictionary<string, GamePlugin> Plugins => loadedPlugins;
+
+        protected Dictionary<string, GamePlugin> loadedPlugins = new Dictionary<string, GamePlugin>();
 
         public List<Item> usedItems = new List<Item>();
 
         public HashSet<Action> frameWaits = new HashSet<Action>();
 
-        public override ModInfo GetPluginInfo() => new ModInfo("il.modded.api", "IvanLom_API");
+        public override ModInfo GetPluginInfo() => new ModInfo("il.modded.api", "IvanLom_API", "API_Plugin");
 
         public static API_Plugin Instance;
         protected override void Awake()
@@ -61,5 +64,15 @@ namespace MyAPI.Core
         }
 
         protected override void LoadImportant() { }
+
+        public void AddPlugin(string type, GamePlugin plug)
+        {
+            loadedPlugins.Add(type, plug);
+        }
+
+        public void RemovePlugin(string type)
+        {
+            loadedPlugins.Remove(type);
+        }
     }
 }

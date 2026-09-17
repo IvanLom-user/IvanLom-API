@@ -71,9 +71,9 @@ namespace MyAPI
             API_Plugin api = FindObjectOfType<API_Plugin>();
             if (api != null && activePlugin.Value)
             {
-                api.plugins.Add(GetPluginInfo().guid);
+                api.AddPlugin(GetPluginInfo().type, this);
             }
-            if (api != null && !api.plugins.Contains(GetPluginInfo().guid))
+            if (api != null && !api.Plugins.TryGetValue(GetPluginInfo().type, out _))
             {
                 enabled = false;
                 return;
@@ -100,7 +100,7 @@ namespace MyAPI
             LoopMan.plugin = this;
         }
 
-        protected void LoadOptions<T>(string localizationKey) where T : ModOptions
+        protected void LoadOptions<T, H>(string localizationKey) where T : ModOptions<H> where H : GamePlugin
         {
             if (!activePlugin.Value) return;
 
@@ -679,25 +679,19 @@ namespace MyAPI
                 Log("Building the NPC..", LogLevel.Info);
                 T npc;
 
+                NPCBuilder<T> builder = new NPCBuilder<T>(Info)
+        .SetName(data.NameKey).SetEnum(data.NameKey)
+        .SetMinMaxAudioDistance(1, data.MaxAudDist).IgnorePlayerOnSpawn()
+        .AddLooker().AddTrigger()
+        .AddSpawnableRoomCategories(data.RoomCat)
+        .SetPoster(data.PosterTexture, PosterNameKey, PosterDescKey);
+
                 if (data.PotentialRooms != null && data.PotentialRooms.Count > 0)
                 {
-                    npc = new NPCBuilder<T>(Info)
-        .SetName(data.NameKey).SetEnum(data.NameKey)
-        .SetMinMaxAudioDistance(1, data.MaxAudDist).IgnorePlayerOnSpawn()
-        .AddLooker().AddTrigger()
-        .AddSpawnableRoomCategories(data.RoomCat)
-        .AddPotentialRoomAssets(data.PotentialRooms.ToArray())
-        .SetPoster(data.PosterTexture, PosterNameKey, PosterDescKey).Build();
+                    builder.AddPotentialRoomAssets(data.PotentialRooms.ToArray());
                 }
-                else
-                {
-                    npc = new NPCBuilder<T>(Info)
-        .SetName(data.NameKey).SetEnum(data.NameKey)
-        .SetMinMaxAudioDistance(1, data.MaxAudDist).IgnorePlayerOnSpawn()
-        .AddLooker().AddTrigger()
-        .AddSpawnableRoomCategories(data.RoomCat)
-        .SetPoster(data.PosterTexture, PosterNameKey, PosterDescKey).Build();
-                }
+
+                npc = builder.Build();
 
                 Log("Loading the NPC's sprite and music..", LogLevel.Info);
                 npc.LoadNPC(this, data.NpcSprite, data.ThemeMusic, data.AdditionalMusic, data.MaxAudDist, data.Rolloff, data.Speed);
@@ -944,16 +938,18 @@ namespace MyAPI
         /// <summary>
         /// Mod's Information, like GUID, the Plugin's name, or it's version. Also contains information of it's additions.
         /// </summary>
-        public struct ModInfo
+        public readonly struct ModInfo
         {
-            public string guid;
-            public string name;
-            public HashSet<PluginAddition> additions;
+            public readonly string guid;
+            public readonly string name;
+            public readonly string type;
+            public readonly HashSet<PluginAddition> additions;
 
-            public ModInfo(string guid, string name, params PluginAddition[] additions)
+            public ModInfo(string guid, string name, string type, params PluginAddition[] additions)
             {
                 this.guid = guid;
                 this.name = name;
+                this.type = type;
                 this.additions = additions != null ? [.. additions.ToList()] : [PluginAddition.None];
             }
         }

@@ -1,5 +1,4 @@
 ﻿using HarmonyLib;
-using MTM101BaldAPI.AssetTools;
 using MTM101BaldAPI.Registers;
 using MTM101BaldAPI.UI;
 using MyAPI.Additions;
@@ -7,6 +6,7 @@ using MyAPI.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using TMPro;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -117,20 +117,39 @@ namespace MyAPI
 
         public static Type GetTypeByName(string typeName)
         {
+            if (string.IsNullOrEmpty(typeName))
+                return null;
+
             Type type = Type.GetType(typeName);
             if (type != null)
                 return type;
 
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
-                foreach (var t in assembly.GetTypes())
+                foreach (var t in GetTypes(assembly))
                 {
-                    if (t.Name.Equals(typeName, StringComparison.OrdinalIgnoreCase))
+                    if (t != null && t.Name.Equals(typeName, StringComparison.OrdinalIgnoreCase))
                         return t;
                 }
             }
 
             return null;
+        }
+
+        public static IEnumerable<Type> GetTypes(Assembly assembly)
+        {
+            try
+            {
+                return assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                return ex.Types.Where(t => t != null);
+            }
+            catch
+            {
+                return Enumerable.Empty<Type>();
+            }
         }
 
         public static int HaveItems<T, H>(ItemManager itm) where T : Item where H : T
@@ -347,5 +366,84 @@ namespace MyAPI
             lifetimer.spriteRenderer = target;
             return lifetimer != null;
         }
+
+
+        /// <summary>
+        /// A replacement to T.Instance / GamePlugin.Instance.
+        /// </summary>
+        /// <typeparam name="T">The Plugin's type.</typeparam>
+        /// <param name="sensitive">If sensitive, any fail will lead to a NullReferenceException.</param>
+        /// <returns>Plugin with the specified type.</returns>
+        /// <exception cref="NullReferenceException"></exception>
+        public static T Instance<T>(bool sensitive = true) where T : GamePlugin
+        {
+            if (API_Plugin.Instance == null)
+            {
+                API_Plugin.Instance = Object.FindObjectOfType<API_Plugin>(true);
+                if (API_Plugin.Instance == null)
+                {
+                    if (sensitive)
+                    {
+                        throw new NullReferenceException($"Error when trying to get an Instance of {typeof(T).Name} Plugin: API Plugin is null!");
+                    }
+                    return null;
+                }
+            }
+
+            if (API_Plugin.Instance.Plugins.TryGetValue(typeof(T).Name, out var plug) && plug.TryGetComponent<T>(out var typed))
+            {
+                return typed;
+            }
+            if (sensitive)
+            {
+                throw new NullReferenceException($"Could not find {typeof(T).Name} Plugin!");
+            }
+            return null;
+        }
+
+        public static T Instance<T>() where T : GamePlugin => Instance<T>(true);
+
+        public static GamePlugin Instance(string guid)
+        {
+            foreach (var plugin in API_Plugin.Instance.Plugins.Values)
+            {
+                if (plugin.GetPluginInfo().guid == guid)
+                {
+                    return plugin;
+                }
+            }
+            return null;
+        }
+    }
+
+    public class GameColor
+    {
+        public float r;
+        public float g;
+        public float b;
+        public float a;
+
+        public static GameColor white => new GameColor(1, 1, 1, 1);
+        public static GameColor black => new GameColor(0, 0, 0, 1);
+        public static GameColor clear => new GameColor(1, 1, 1, 0);
+
+        public GameColor(float r, float g, float b, float a = 1)
+        {
+            this.r = r;
+            this.g = g;
+            this.b = b;
+            this.a = a;
+        }
+
+        public void Change(float r, float g, float b)
+        {
+            this.r = r;
+            this.g = g;
+            this.b = b;
+        }
+
+        public Color ToColor() => new Color(r, g, b, a);
+        public Color Inverse() => new Color(1 - r, 1 - g, 1 - b);
+        public static GameColor Inverse(GameColor other) => new GameColor(1 - other.r, 1 - other.g, 1 - other.b);
     }
 }

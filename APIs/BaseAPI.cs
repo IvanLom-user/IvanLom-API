@@ -249,18 +249,31 @@ namespace MyAPI
 
         public static void LoadAssetBundle<T>(this GamePlugin plugin, string name, string prefPath, ref AssetBundle bundle, ref GameObject prefab, ref T component, out GameObject instance) where T : Component
         {
-            if (bundle == null)
+            try
             {
-                string bundlePath = Path.Combine(AssetLoader.GetModPath(plugin), "Data", GetOSName(), name);
-                bundle = AssetBundle.LoadFromFile(bundlePath);
                 if (bundle == null)
                 {
-                    plugin.Log("The bundle is null!", BepInEx.Logging.LogLevel.Fatal);
-                    instance = null;
-                    return;
+                    string bundlePath = Path.Combine(AssetLoader.GetModPath(plugin), "Data", GetOSName(), name);
+                    bundle = AssetBundle.LoadFromFile(bundlePath);
+                    if (bundle == null)
+                    {
+                        plugin.Log("The bundle is null!", BepInEx.Logging.LogLevel.Fatal);
+                        instance = null;
+                        return;
+                    }
                 }
-            }
 
+                LoadPrefab(plugin, bundle, prefPath, ref prefab, ref component, out instance);
+            }
+            catch (Exception ex)
+            {
+                instance = null;
+                plugin.Log($"Could not load asset bundle: {ex.Message}", BepInEx.Logging.LogLevel.Fatal);
+            }
+        }
+
+        public static void LoadPrefab<T>(this GamePlugin plugin, AssetBundle bundle, string prefPath, ref GameObject prefab, ref T component, out GameObject instance) where T : Component
+        {
             if (prefab == null)
             {
                 prefab = bundle.LoadAsset<GameObject>(prefPath);

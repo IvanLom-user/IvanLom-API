@@ -1,12 +1,13 @@
 ﻿using MTM101BaldAPI.OptionsAPI;
 using MTM101BaldAPI.Reflection;
+using MyAPI._SaveSystem;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
 namespace MyAPI
 {
-    public abstract class ModOptions : CustomOptionsCategory
+    public abstract class ModOptions<T> : CustomOptionsCategory where T : GamePlugin
     {
         protected Dictionary<string, MenuToggle> synchronizatedToggles = new Dictionary<string, MenuToggle>();
         protected Dictionary<string, AdjustmentBars> synchronizatedBars = new Dictionary<string, AdjustmentBars>();
@@ -21,24 +22,24 @@ namespace MyAPI
 
         protected virtual void OnApply()
         {
+            PlayerSaving<T>.Load();
             string[] keys = synchronizatedToggles.Keys.ToArray();
             MenuToggle[] toggles = synchronizatedToggles.Values.ToArray();
             for (int i = 0; i < synchronizatedToggles.Count; i++)
             {
-                PlayerPrefs.SetInt(keys[i], toggles[i].Value ? 1 : 0);
+                PlayerSaving<T>.data.Set(keys[i], toggles[i].Value ? 1 : 0);
             }
             string[] barKeys = synchronizatedBars.Keys.ToArray();
             AdjustmentBars[] bars = synchronizatedBars.Values.ToArray();
             for (int i = 0; i < synchronizatedBars.Count; i++)
             {
-                PlayerPrefs.SetInt(barKeys[i], Mathf.RoundToInt((int)bars[i].ReflectionGetVariable("val")));
+                PlayerSaving<T>.data.Set(barKeys[i], Mathf.RoundToInt((int)bars[i].ReflectionGetVariable("val")));
             }
-            PlayerPrefs.Save();
         }
 
         protected MenuToggle CreateToggleButton(string synchronizableName, string nameKey, string descKey, Vector3 pos, float width, bool defaultValue = false)
         {
-            MenuToggle toggle = CreateToggle(synchronizableName, nameKey, PlayerPrefs.GetInt(synchronizableName, defaultValue ? 1 : 0) == 1, pos, width);
+            MenuToggle toggle = CreateToggle(synchronizableName, nameKey, PlayerSaving<T>.data.Get(synchronizableName, defaultValue ? 1 : 0) == 1, pos, width);
 
             if (!string.IsNullOrEmpty(descKey)) AddTooltip(toggle, descKey);
 
@@ -50,7 +51,7 @@ namespace MyAPI
         protected AdjustmentBars CreateBarsButtons(string synchronizableName, string nameKey, string descKey, Vector3 pos, int width, int defaultIndex)
         {
             var bars = CreateBars(OnApply, nameKey, pos, width);
-            bars.ReflectionSetVariable("val", PlayerPrefs.GetInt(synchronizableName, defaultIndex));
+            bars.ReflectionSetVariable("val", PlayerSaving<T>.data.Get(synchronizableName, defaultIndex));
             bars.ReflectionInvoke("UpdateBars", null);
 
             if (!string.IsNullOrEmpty(descKey)) AddTooltip(bars, descKey);

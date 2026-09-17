@@ -33,9 +33,9 @@ namespace MyAPI.Additions
         private Quaternion GetRandomShakeRotation()
         {
             Vector3 randomEuler = Vector3.zero;
-            randomEuler.x = Random.Range(-56, 56);
-            randomEuler.y = Random.Range(-56, 56);
-            randomEuler.z = Random.Range(-56, 56);
+            randomEuler.x = Random.Range(-36, 36);
+            randomEuler.y = Random.Range(-36, 36);
+            randomEuler.z = Random.Range(-36, 36);
 
             return Quaternion.Euler(randomEuler);
         }
